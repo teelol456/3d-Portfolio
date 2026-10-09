@@ -89,6 +89,63 @@ const myPointLight1 = new THREE.PointLight(0xffffff, 50, 20);
 myPointLight1.position.set(-24.38, 17.48, -14.64);
 scene.add(myPointLight1);
 
+const blueSphereUniforms = {
+    uTime: { value: 0.0 },
+    uLightDir: { value: new THREE.Vector3(1.0, 1.0, 1.0).normalize() },
+    uColor: { value: new THREE.Color(0x0088ff) }
+};
+
+const blueSphereVertexShader = `
+    uniform float uTime;
+    varying vec3 vNormal;
+
+    void main() {
+        vNormal = normal;
+        vec3 pos = position;
+
+        float displacement = sin(pos.x * 5.0 + uTime * 3.0) * sin(pos.y * 5.0 + uTime * 3.0) * 0.1;
+        pos += normal * displacement;
+
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
+    }
+`;
+
+const blueSphereFragmentShader = `
+    precision mediump float;
+    uniform vec3 uLightDir;
+    uniform vec3 uColor;
+    varying vec3 vNormal;
+
+    void main() {
+        vec3 N = normalize(vNormal);
+        vec3 L = normalize(uLightDir);
+
+        float NdotL = max(dot(N, L), 0.0);
+        
+        // แบ่งระดับชั้นของแสงออกเป็น 4 ชั้น (Multi-step Toon Shading)
+        float steps = 4.0;
+        float diffuse = floor(NdotL * steps) / steps;
+        
+        float ambient = 0.3;
+
+        vec3 finalColor = uColor * (diffuse + ambient);
+        gl_FragColor = vec4(finalColor, 1.0);
+    }
+`;
+
+const blueSphereGeo = new THREE.SphereGeometry(2.5, 64, 64);
+const blueSphereMat = new THREE.ShaderMaterial({
+    vertexShader: blueSphereVertexShader,
+    fragmentShader: blueSphereFragmentShader,
+    uniforms: blueSphereUniforms,
+    side: THREE.DoubleSide
+});
+
+const blueSphereMesh = new THREE.Mesh(blueSphereGeo, blueSphereMat);
+blueSphereMesh.position.set(-24, 9, -20);
+blueSphereMesh.name = "BlueSphereShader";
+scene.add(blueSphereMesh);
+
 const clock = new THREE.Clock();
 
 let mixer = null;
@@ -186,7 +243,7 @@ loader.load(
     }
 );
 
-function animate() {
+function animate(time) {
     requestAnimationFrame(animate);
 
     const delta = clock.getDelta();
@@ -194,6 +251,10 @@ function animate() {
     if (mixer) {
         mixer.update(delta);
     }
+
+    blueSphereUniforms.uTime.value = time * 0.002;
+    blueSphereMesh.rotation.y += 0.005;
+    blueSphereMesh.rotation.z += 0.002;
 
     if (zoomStartTime !== null) {
         const duration = 700;
@@ -222,7 +283,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-animate();
+animate(0);
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -304,7 +365,6 @@ window.addEventListener('click', (event) => {
             const distance = 10;
 
             const videoNormal = new THREE.Vector3(0, -90, 0)
-
                 .applyQuaternion(
                     clickedMesh.getWorldQuaternion(new THREE.Quaternion())
                 )
